@@ -234,23 +234,31 @@
 
   /* Result */
   .result-card {
+    --price-meta-fs: clamp(1.04rem, 3.2vw, 1.44rem);
     background: linear-gradient(135deg, #0D9488, #0F766E);
     color: #fff;
     border-radius: var(--r);
     padding: clamp(14px, 3vw, 22px);
   }
   .result-label {
-    font-size: 0.65rem; font-weight: 600;
+    font-size: var(--price-meta-fs); font-weight: 600;
     letter-spacing: 0.08em; text-transform: uppercase;
     opacity: .7; margin-bottom: 4px;
   }
   .result-main {
-    font-size: clamp(2rem, 6vw, 2.8rem);
+    font-size: clamp(2.6rem, 8vw, 3.6rem);
     font-weight: 700;
     letter-spacing: -.02em; line-height: 1.05;
     transition: opacity .2s;
   }
   .result-main.placeholder { opacity: .35; }
+  .result-unit {
+    font-size: var(--price-meta-fs);
+    font-weight: 600;
+    letter-spacing: 0;
+    margin-left: 0.3em;
+    opacity: .85;
+  }
 
   /* Breakdown */
   .breakdown {
@@ -279,6 +287,9 @@
   .b-row.total { background: var(--amber-light); }
   .b-row.total .b-name,
   .b-row.total .b-val { color: #92400E; font-weight: 700; }
+  .b-row.profit { background: var(--teal-light); }
+  .b-row.profit .b-name,
+  .b-row.profit .b-val { color: #0F766E; font-weight: 700; }
 
   /* Footer */
   footer {
@@ -474,13 +485,24 @@
         </label>
         <select id="weightSelect"></select>
       </div>
+
+      <div class="field">
+        <label>
+          利润
+          <span class="hint">（人民币，最多两位小数）</span>
+        </label>
+        <div class="input-wrap">
+          <span class="unit">¥</span>
+          <input type="number" id="profitInput" placeholder="0.00" min="0" step="0.01">
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT -->
     <div class="right-col">
 
       <div class="result-card" id="resultCard">
-        <div class="result-label">总成本</div>
+        <div class="result-label">定价</div>
         <div class="result-main placeholder" id="resultMain">—</div>
       </div>
 
@@ -503,8 +525,12 @@
           <span class="b-val" id="bShip">—</span>
         </div>
         <div class="b-row total">
-          <span class="b-name">成本总结</span>
+          <span class="b-name">成本合计</span>
           <span class="b-val" id="bTotal">—</span>
+        </div>
+        <div class="b-row profit">
+          <span class="b-name">利润（换算新台币）</span>
+          <span class="b-val" id="bProfit">—</span>
         </div>
       </div>
 
@@ -613,39 +639,59 @@
   }
 
   /* ── Format ── */
+  function fmtNum(n) {
+    return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   function fmt(n) {
-    return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' 新台币';
+    return fmtNum(n) + ' 新台币';
+  }
+  // 单位用小字渲染，否则放大后的定价在桌面宽度会折成两行
+  function setPrice(n) {
+    const rm = document.getElementById('resultMain');
+    rm.textContent = '';
+    if (n === null) {
+      rm.textContent = '—';
+      rm.classList.add('placeholder');
+      return;
+    }
+    rm.classList.remove('placeholder');
+    rm.append(fmtNum(n));
+    const unit = document.createElement('span');
+    unit.className = 'result-unit';
+    unit.textContent = '新台币';
+    rm.append(unit);
   }
 
   /* ── Calculate ── */
   function calculate() {
     const cny = parseFloat(document.getElementById('cnyInput').value);
-    const rm  = document.getElementById('resultMain');
-    const ids = ['bBase','bComm','bFreight','bShip','bTotal'];
+    const ids = ['bBase','bComm','bFreight','bShip','bTotal','bProfit'];
 
     if (!rate || isNaN(cny) || cny <= 0) {
-      rm.textContent = '—';
-      rm.classList.add('placeholder');
+      setPrice(null);
       ids.forEach(id => document.getElementById(id).textContent = '—');
       return;
     }
 
     const freight = parseFloat(document.getElementById('freightSlider').value);
     const weight  = parseInt(document.getElementById('weightSelect').value);
+    const profit  = parseFloat(document.getElementById('profitInput').value);
     const baseTWD = cny * rate;
     const comm    = baseTWD * (cfg.commission / 100);
     const frtTWD  = freight * rate;
     const ship    = shippingTWD(weight);
     const total   = baseTWD + comm + frtTWD + ship;
+    const profTWD = (isNaN(profit) || profit < 0 ? 0 : profit) * rate;
+    const price   = total + profTWD;
 
-    rm.textContent = fmt(total);
-    rm.classList.remove('placeholder');
+    setPrice(price);
 
     document.getElementById('bBase').textContent    = fmt(baseTWD);
     document.getElementById('bComm').textContent    = fmt(comm);
     document.getElementById('bFreight').textContent = fmt(frtTWD);
     document.getElementById('bShip').textContent    = ship + ' 新台币';
     document.getElementById('bTotal').textContent   = fmt(total);
+    document.getElementById('bProfit').textContent  = fmt(profTWD);
 
     const card = document.getElementById('resultCard');
     card.classList.remove('flash');
@@ -667,6 +713,13 @@
 
   document.getElementById('cnyInput').addEventListener('input', calculate);
   document.getElementById('weightSelect').addEventListener('change', calculate);
+
+  const profitInput = document.getElementById('profitInput');
+  profitInput.addEventListener('input', () => {
+    const [int, dec] = profitInput.value.split('.');
+    if (dec && dec.length > 2) profitInput.value = int + '.' + dec.slice(0, 2);
+    calculate();
+  });
 
   /* ── Modal ── */
   const overlay = document.getElementById('modalOverlay');
